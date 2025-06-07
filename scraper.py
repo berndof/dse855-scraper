@@ -115,7 +115,7 @@ class SessionController:
             #save state 
             await page.context.storage_state(path=self.state_file_path)
             logger.debug("Context created with success")
-            return 
+            return page
         
     async def sign_in(self, page):
         
