@@ -1,4 +1,4 @@
-import asyncio
+
 import os
 
 from helpers.format import to_snake_case
@@ -7,9 +7,14 @@ from schemas import (
     Accumulated,
     BetweenPhases,
     CollectedData,
+    EngineData,
+    GeneratorData,
+    MainsData,
     ModuleState,
     PerPhase,
+    PhasePower,
     PhaseValues,
+    PowerData,
 )
 
 logger = get_logger("scraper")
@@ -46,7 +51,6 @@ class SessionController:
         return data
 
     async def stop(self):
-        logger.debug("Stopping...")
         await self.browser.close()
         logger.info("Goodbye...")
 
@@ -142,7 +146,6 @@ class SessionController:
 
         await page.route("**/*", handle_route)
 
-
 class Scraper:
 
     def __init__(self, page):
@@ -161,19 +164,29 @@ class Scraper:
             first_row = await table.query_selector("tr")
             first_td = await first_row.query_selector("td")
             text = (await first_td.inner_text()).strip().lower()
-            logger.debug(text)
 
             if text == "generator":
-                await self.get_generator_data(table)
+               generator_data = await self.get_generator_data(table)
+
+            if text == "mains":
+                mains_data = await self.get_mains_data(table)
+
+            if text == "power":
+                power_data = await self.get_power_data(table)
+
+            if text == "engine":
+                engine_data = await self.get_engine_data(table)
             
         data = CollectedData(
             start_state=start_state_data,
-            module_state=ModuleState(**module_state_data)
+            module_state=module_state_data,
+            generator=generator_data,
+            mains=mains_data,
+            power=power_data,
+            engine=engine_data
         )
 
-        logger.debug(data)
-
-        input("wait")
+        return data
 
     async def get_start_state(self):
         leds = {
@@ -207,9 +220,9 @@ class Scraper:
 
             # Define os rótulos que você quer buscar
             keys = {
-                "kWh": None,
-                "kVAh": None,
-                "kVArh": None
+                "kwh": 0.0,
+                "kvah": 0.0,
+                "kvarh": 0.0
             }
 
             # Encontra todas as linhas (tr) da tabela
@@ -229,7 +242,7 @@ class Scraper:
                         try:
                             keys[label_text] = float(value_text)
                         except ValueError:
-                            keys[label_text] = None  # ou 0.0, se preferir default
+                            keys[label_text] = 0.0  # ou 0.0, se preferir default
 
             return keys
 
@@ -256,13 +269,11 @@ class Scraper:
 
         data["accumulated"] = Accumulated(**accumulated)
 
-        return data        
+        return ModuleState(**data)
 
     async def get_generator_data(self, table):
         sub_tables = await table.query_selector_all("table")
-
         left_table, right_table = sub_tables
-
         async def left_table_data(): #between phases
             result = {}
             for row in await left_table.query_selector_all("tr"):
@@ -293,7 +304,6 @@ class Scraper:
 
             for row in rows:
                 text = (await row.inner_text()).strip()
-                logger.debug(text)
 
                 parts = text.split()
                 if not parts:
@@ -317,15 +327,165 @@ class Scraper:
                 l2=PhaseValues(v=voltages["l2"], a=currents["l2"]),
                 l3=PhaseValues(v=voltages["l3"], a=currents["l3"]),
             )
-
-
         per_phase = await right_table_data()
 
+        return GeneratorData(
+            between_phases=between_phases,
+            per_phase=per_phase
+        )
 
-        logger.info(between_phases)
-        logger.info(per_phase)
+    async def get_mains_data(self, table):
+        sub_tables = await table.query_selector_all("table")
+        left_table, right_table = sub_tables
+        
+        async def left_table_data(): #between phases
+            result = {}
+            for row in await left_table.query_selector_all("tr"):
+                text = (await row.inner_text()).strip()
 
-        """ for row in await right_table.query_selector_all("tr"):
+                parts = text.split()
+                if not parts:
+                    continue
+
+                # Detectar linha de tensão
+                if parts[0].lower() == "v":
+                    result["l1_l2"] = float(parts[1])
+                    result["l2_l3"] = float(parts[2])
+                    result["l3_l1"] = float(parts[3])
+
+                # Detectar linha de frequência
+                elif parts[0].lower().startswith("frequency") and len(parts) >= 2:
+                    result["freq"] = float(parts[1])
+
+            return BetweenPhases(**result)
+        between_phases = await left_table_data()
+
+        async def right_table_data(): #per phase
+            rows = await right_table.query_selector_all("tr")
+            
+            voltages = {}
+            currents = {}
+
+            for row in rows:
+                text = (await row.inner_text()).strip()
+
+                parts = text.split()
+                if not parts:
+                    continue
+
+                if parts[0] == "V" and len(parts) >= 4:
+                    voltages = {
+                        "l1": float(parts[1]),
+                        "l2": float(parts[2]),
+                        "l3": float(parts[3]),
+                    }
+                elif parts[0] == "A" and len(parts) >= 4:
+                    currents = {
+                        "l1": float(parts[1]) if parts[1] != "#" else 0.0,
+                        "l2": float(parts[2]) if parts[1] != "#" else 0.0,
+                        "l3": float(parts[3]) if parts[1] != "#" else 0.0,
+                    }
+
+            return PerPhase(
+                l1=PhaseValues(v=voltages["l1"], a=currents["l1"]),
+                l2=PhaseValues(v=voltages["l2"], a=currents["l2"]),
+                l3=PhaseValues(v=voltages["l3"], a=currents["l3"]),
+            )
+        per_phase = await right_table_data()
+
+        return MainsData(
+            between_phases=between_phases,
+            per_phase=per_phase
+        )
+
+    async def get_power_data(self, table):
+        sub_table = await table.query_selector_all("table")
+        sub_table = sub_table[0]
+        kw_values = []
+        kva_values = []
+        kvar_values = []
+        pf_values = []
+
+
+        rows = await sub_table.query_selector_all("tr")
+        for row in rows:
             text = (await row.inner_text()).strip()
-            logger.debug(text) """
+            parts = text.split()
 
+            if not parts:
+                continue
+
+            key = parts[0].lower()
+            values = parts[1:]
+
+            if key == "kw":
+                kw_values = [float(v) if v != "-" else 0.0 for v in values]
+            elif key == "kva":
+                kva_values = [float(v) if v != "-" else 0.0 for v in values]
+            elif key == "kvar":
+                kvar_values = [float(v) if v != "-" else 0.0 for v in values]
+            elif key == "pf":
+                pf_values = [float(v) if v != "-" else 0.0 for v in values]
+
+        def build_phase(i: int):
+            return PhasePower(
+                kw=kw_values[i],
+                kva=kva_values[i],
+                kvar=kvar_values[i],
+                pf=pf_values[i],
+            )
+
+        return PowerData(
+            l1=build_phase(0),
+            l2=build_phase(1),
+            l3=build_phase(2),
+            total=build_phase(3),
+        )
+
+    async def get_engine_data(self, table) -> EngineData:
+        sub_tables = await table.query_selector_all("table")
+        sub_table = sub_tables[0]
+        rows = await sub_table.query_selector_all("tr")
+
+        data = {
+            "speed": 0.0,
+            "oil_pressure": 0.0,
+            "coolant_temperature": 0.0,
+            "fuel_level": 0,
+            "charge_alternator": 0.0,
+            "engine_battery": 0.0,
+            "engine_starts": 0,
+            "engine_minutes": 0
+        }
+
+        for row in rows:
+            text = (await row.inner_text()).strip()
+            parts = text.split()
+
+            if parts[:2] == ["Engine", "Speed"]:
+                data["speed"] = float(parts[2].replace("RPM", "").replace("#", "") or 0)
+
+            elif parts[:2] == ["Oil", "Pressure"]:
+                data["oil_pressure"] = float(parts[2].replace("KPa", "").replace("#", "") or 0)
+
+            elif parts[:2] == ["Coolant", "Temperature"]:
+                data["coolant_temperature"] = float(parts[2].replace("°C", "").replace("#", "") or 0)
+
+            elif parts[:2] == ["Fuel", "Level"]:
+                data["fuel_level"] = int(parts[2].replace("%", "").replace("#", "") or 0)
+
+            elif parts[:2] == ["Charge", "Alternator"]:
+                data["charge_alternator"] = float(parts[2].replace("V", "").replace("#", "") or 0)
+
+            elif parts[:2] == ["Engine", "Battery"]:
+                data["engine_battery"] = float(parts[2].replace("V", "").replace("#", "") or 0)
+
+            elif parts[:2] == ["Engine", "Starts"]:
+                data["engine_starts"] = int(parts[2].replace("starts", "").replace("#", "") or 0)
+
+            elif parts[:2] == ["Engine", "Hours"]:
+                hours = int(parts[2].replace("h", "").replace("#", "") or 0)
+                minutes = int(parts[3].replace("m", "").replace("#", "") or 0)
+                data["engine_minutes"] = hours * 60 + minutes
+
+        return EngineData(**data)

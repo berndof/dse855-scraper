@@ -1,18 +1,24 @@
 import os
+from dataclasses import asdict
 
 from zabbix_utils import AsyncSender, ItemValue
+
+from schemas import CollectedData, flatten_dataclass
 
 server = os.getenv("ZABBIX_SERVER")
 port = os.getenv("ZABBIX_PORT")
 zabbix_host = os.getenv("ZABBIX_HOST")
 
 
-async def send_data(data):
+async def send_data(data:CollectedData):
 
+    flat_data = flatten_dataclass(data)
     items = [
-        ItemValue(zabbix_host, key, value) for key, value in data.items()
+        ItemValue(zabbix_host, key, value)
+        for key, value in flat_data.items()
         if value is not None
     ]
+    print(items)
 
     sender = AsyncSender(zabbix_host, port)
     try:

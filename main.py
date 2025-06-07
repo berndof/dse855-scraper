@@ -21,8 +21,7 @@ async def main():
 
         try:
             data = await session_controller.run()
-            #await send_data(scraped_data)
-            logger.debug(data)
+            await send_data(data)
 
         except Exception as e:
             logger.error(e)
