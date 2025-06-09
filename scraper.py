@@ -25,7 +25,6 @@ class SessionController:
 
     def __init__(self, pw):
         self.pw = pw
-        #self.let_pass = True
 
     async def launch_browser(self):
         self.browser = await self.pw.chromium.launch(headless=True)
@@ -144,19 +143,15 @@ class SessionController:
         return
     
     async def block_background_updates(self, page):
-
-        #pass 1 request
-        #self.let_pass = True
-        
         async def handle_route(route, request):
             url = request.url
             resource = request.resource_type
             if resource in ["xhr"] and "/realtime.cgi" in url:
                 if self.let_pass:
-                    logger.debug(f"✅ Liberando {resource} → {url} ({self.let_pass} restantes)")
+                    #logger.debug(f"✅ Liberando {resource} → {url} ({self.let_pass} restantes)")
                     await route.continue_()
                     return
-                logger.warning(f"⛔ Bloqueando {resource} → {url}")
+                #logger.warning(f"⛔ Bloqueando {resource} → {url}")
                 await route.abort()
             else:
                 await route.continue_()
@@ -423,7 +418,6 @@ class Scraper:
         kva_values = []
         kvar_values = []
         pf_values = []
-
 
         rows = await sub_table.query_selector_all("tr")
         for row in rows:

@@ -19,7 +19,7 @@ async def send_data(data:CollectedData):
     ]
     print(items)
 
-    sender = AsyncSender(zabbix_host, port)
+    sender = AsyncSender(server, port)
     try:
         response = await sender.send(items)
         return response
