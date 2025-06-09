@@ -13,8 +13,6 @@ fi
 echo "Executando script em $(date)" >> "$LOGFILE"
 cd "$WORKDIR" || { echo "Erro ao entrar no diretório" >> "$LOGFILE"; exit 1; }
 
-# Ativa o ambiente virtual
-source "$WORKDIR/.venv/bin/activate"
-exec uv run --env-file "$WORKDIR/.env" main.py
+uv run --env-file "$WORKDIR/.env" main.py
 
 echo "Finalizado em $(date)" >> "$LOGFILE"
