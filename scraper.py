@@ -1,5 +1,6 @@
 
 import os
+import sys
 
 from helpers.format import to_snake_case
 from helpers.log import get_logger
@@ -32,19 +33,21 @@ class SessionController:
 
     async def run(self):
         await self.launch_browser()
+        logger.debug("Browser launched")
+        
         try:
-            if os.path.isfile(self.state_file_path):
-                logger.debug("State file located")
-
-                page = await self.inject_state(self.browser)
+            page = await self.inject_state(self.browser)
+        except FileNotFoundError:
+            page = await self.create_state(self.browser)
+            logger.debug("State file created")
+                
         except Exception as e:
             logger.debug(e)
-            page = await self.create_state(self.browser)
-
+            sys.exit(1)
+            
         await self.wait_load(page)
         await self.block_background_updates(page)
 
-        
         self.scraper = Scraper(page)
         data = await self.scraper.get_data()
         
@@ -85,36 +88,51 @@ class SessionController:
         self.let_pass = False
 
     async def inject_state(self, browser):
-        context = await browser.new_context()
-        await context.close()
-        new_context = await browser.new_context(storage_state=self.state_file_path)
-        page = await new_context.new_page()
-        
-        await page.goto(f"{os.getenv("DSE_URL")}/secure/index.html")
 
-        if await self.validate_login(page):
-            logger.debug("Injected context with success")
-            return page
-        
-    async def validate_login(self, page):
+        try:
+
+            if os.path.isfile(self.state_file_path):
+                logger.debug("State file located")
+            else:
+                raise FileNotFoundError
+            
+            context = await browser.new_context()
+            await context.close()
+            new_context = await browser.new_context(storage_state=self.state_file_path)
+            page = await new_context.new_page()
+            
+            await page.goto(f"{os.getenv("DSE_URL")}/secure/index.html")
+
+            if await self.validate_login(page):
+                logger.debug("Injected context with success")
+                return page
+            else:
+                #delete state file
+                os.remove(self.state_file_path)
+                raise FileNotFoundError
+
+        except Exception:
+            raise FileNotFoundError
+            
+    async def validate_login(self, page) -> bool:
         try:
             await page.wait_for_selector("#logindetail")
             return True
         except Exception as e:
             logger.exception(e)
-            raise e
+            return False
             
     async def create_state(self, browser):
         logger.debug("Creating state")
         context = await browser.new_context()
         page = await context.new_page()
         await page.goto(os.getenv("DSE_URL"))
-        
         await self.sign_in(page)
         if await self.validate_login(page):
             #save state 
             await page.context.storage_state(path=self.state_file_path)
             logger.debug("Context created with success")
+            
             return page
         
     async def sign_in(self, page):
