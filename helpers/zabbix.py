@@ -1,12 +1,11 @@
 import os
-from dataclasses import asdict
 
 from zabbix_utils import AsyncSender, ItemValue
 
 from schemas import CollectedData, flatten_dataclass
 
 server = os.getenv("ZABBIX_SERVER")
-port = os.getenv("ZABBIX_PORT")
+port = int(os.getenv("ZABBIX_PORT"))
 zabbix_host = os.getenv("ZABBIX_HOST")
 
 
