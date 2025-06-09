@@ -54,7 +54,6 @@ class SessionController:
 
     async def stop(self):
         await self.browser.close()
-        logger.info("Goodbye...")
 
     async def wait_load(self, page):
 

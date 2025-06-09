@@ -1,13 +1,13 @@
-#TODO logging
 import asyncio
 import os
+import sys
 
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
 from helpers.log import get_logger, setup_logs
 from helpers.zabbix import send_data
-from scraper import Scraper, SessionController
+from scraper import SessionController
 
 load_dotenv()
 
@@ -22,11 +22,8 @@ async def main():
         try:
             data = await session_controller.run()
             await send_data(data)
-
-        except Exception as e:
-            logger.error(e)
-            
-
+        except Exception:
+            sys.exit(1)
         finally:
             await session_controller.stop()
 

@@ -1,0 +1,1 @@
+2025-06-09 15:34:00 | ERROR | zabbix_utils.aiosender | Couldn't connect to all of cluster nodes: [127.0.0.1:10051]
