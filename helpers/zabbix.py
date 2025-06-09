@@ -22,6 +22,7 @@ async def send_data(data:CollectedData):
     sender = AsyncSender(server, port)
     try:
         response = await sender.send(items)
+        logger.debug(response)
         return response
     except Exception as e:
         raise e

@@ -40,6 +40,7 @@ if __name__ == "__main__":
         asyncio.run(asyncio.wait_for(main(), timeout=timeout_value))
 
     except asyncio.TimeoutError as e:
-        logger.error(e)
+        #logger.error(e)
+        sys.exit(1)
 
     
