@@ -1,8 +1,8 @@
 import os
 
-from log import get_logger
 from zabbix_utils import AsyncSender, ItemValue
 
+from helpers.log import get_logger
 from schemas import CollectedData, flatten_dataclass
 
 server = os.getenv("ZABBIX_SERVER")
